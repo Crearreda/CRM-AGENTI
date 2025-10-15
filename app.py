@@ -56,6 +56,29 @@ def _cloudinary_setup():
 def health():
     return jsonify({"ok": True})
 
+@app.get("/diag")
+def diag():
+    info = {
+        "has_sheet_id": bool(SHEET_ID),
+        "sheet_id": SHEET_ID,
+        "sheet_name": SHEET_NAME,
+        "has_creds_json": bool(GOOGLE_CREDENTIALS_JSON),
+    }
+    try:
+        gc = _load_gs_client()
+        info["gspread_auth"] = True
+        sh = gc.open_by_key(SHEET_ID)        # verifica accesso al file
+        info["sheet_title"] = sh.title
+        ws = sh.worksheet(SHEET_NAME)        # verifica nome foglio
+        info["worksheet_found"] = True
+        vals = ws.get_all_values()
+        info["rows_count"] = len(vals)
+        return jsonify({"ok": True, "diag": info})
+    except Exception as e:
+        info["error"] = str(e)
+        return jsonify({"ok": False, "diag": info}), 500
+
+
 @app.get("/list")
 def list_rows():
     gc = _load_gs_client()
