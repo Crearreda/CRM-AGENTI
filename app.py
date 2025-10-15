@@ -23,6 +23,11 @@ CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "")
 app = Flask(__name__)
 CORS(app)
 
+@app.get("/")
+def index():
+    return jsonify({"ok": True, "message": "CRM-Agenti API attiva ✅"})
+
+
 def _load_gs_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     if GOOGLE_CREDENTIALS_JSON:
