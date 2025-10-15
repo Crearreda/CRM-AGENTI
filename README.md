@@ -1,0 +1,1 @@
+Backend Python per CRM Agenti con Flask + Google Sheets + Cloudinary
