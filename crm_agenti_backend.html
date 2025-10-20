@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini CRM Agenti – Registro condiviso</title>
+  <style>
+    :root { --radius: 16px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Helvetica Neue", sans-serif; background:#f7f7fb; margin:0; }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .card { background:#fff; border-radius: var(--radius); box-shadow: 0 2px 10px rgba(0,0,0,.06); padding: 16px; }
+    h1 { font-size: clamp(1.3rem, 2.2vw, 2rem); margin: 0 0 12px; }
+    label { font-size: .9rem; display:block; margin-bottom: 6px; }
+    select, input[type="date"], input[type="text"], input[type="file"] { width: 100%; padding: 10px 12px; border-radius: 12px; border:1px solid #dadce0; background: #fff; }
+    .grid { display: grid; gap: 12px; }
+    @media (min-width: 900px){ .grid-5 { grid-template-columns: repeat(5, minmax(0,1fr)); } }
+    .row { display:flex; gap: 8px; align-items:center; }
+    .btn { appearance:none; border:1px solid #e0e0e6; background:#fff; padding:10px 14px; border-radius: 999px; cursor:pointer; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .btn:hover { background:#f2f2f6; }
+    .btn.primary { background:#111; color:#fff; border-color:#111; }
+    .btn.danger { color:#b00020; }
+    table { width:100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { padding: 10px; border-bottom:1px solid #eee; text-align: left; }
+    thead th { background:#fafafc; font-weight:600; }
+    .muted { color:#697386; font-size: .85rem; }
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .toast { margin-top: 10px; background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; padding:10px 12px; border-radius:12px; font-size:.9rem; }
+    .spinner { width:18px; height:18px; border-radius:50%; border:2px solid #e5e7eb; border-top-color:#111; animation:spin .8s linear infinite; display:inline-block; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display:none; align-items: center; justify-content: center; padding: 16px; }
+    .modal { background: #fff; border-radius: var(--radius); width: min(900px, 100%); max-height: 80vh; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+    .modal header, .modal footer { padding: 12px 16px; border-bottom:1px solid #eee; }
+    .modal footer { border-top:1px solid #eee; border-bottom:0; }
+    .modal main { padding: 16px; }
+    .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .gallery img { width: 100%; height: 160px; object-fit: cover; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+    .empty { padding: 14px; background:#f9fafb; border:1px dashed #e5e7eb; border-radius:12px; text-align:center; color:#6b7280; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h1>Mini CRM – Registro condiviso (Google Sheets)</h1>
+      <div class="row">
+        <button id="refreshBtn" class="btn">Ricarica</button>
+      </div>
+    </div>
+
+    <!-- FORM -->
+    <form id="crmForm" class="card">
+      <div class="grid grid-5">
+        <div>
+          <label>Nome Agente</label>
+          <select id="agenteSelect">
+            <option value="">Seleziona…</option>
+          </select>
+        </div>
+        <div>
+          <label>Negozio</label>
+          <select id="negozioSelect" disabled>
+            <option value="">Seleziona un Agente prima</option>
+          </select>
+        </div>
+        <div>
+          <label>Data di passaggio</label>
+          <input type="date" id="dataInput" />
+        </div>
+        <div class="grid" style="grid-template-columns: 1fr;">
+          <label>Foto del passaggio (multiple)</label>
+          <input type="file" id="fotoInput" accept="image/*" multiple />
+          <span id="fotoCount" class="muted"></span>
+        </div>
+        <div class="row" style="justify-content:flex-end; align-items:end; padding-top: 22px;">
+          <button class="btn primary" id="inviaBtn" type="submit"><span id="submitText">Invia</span> <span id="submitSpinner" style="display:none;margin-left:8px;" class="spinner"></span></button>
+        </div>
+      </div>
+      <div id="toast" class="toast" style="display:none;"></div>
+      <p class="muted" style="margin-top:8px;">I dati vengono salvati su Google Sheets e le foto su Google Drive (linkate nel registro). Il registro è consultabile da chi ha il link/autorizzazione.</p>
+    </form>
+
+    <!-- REGISTRO -->
+    <div class="card" style="margin-top: 16px;">
+      <div class="toolbar" style="margin-bottom: 10px;">
+        <div>
+          <label class="muted">Filtro Agente</label>
+          <select id="fAgente" style="min-width: 120px;"></select>
+        </div>
+        <div>
+          <label class="muted">Dal</label>
+          <input type="date" id="fDal" />
+        </div>
+        <div>
+          <label class="muted">Al</label>
+          <input type="date" id="fAl" />
+        </div>
+        <div style="flex:1; min-width: 220px;">
+          <label class="muted">Cerca</label>
+          <input type="text" id="fSearch" placeholder="ID, agente, negozio, data…" />
+        </div>
+      </div>
+      <div style="overflow:auto;">
+        <table id="registroTable">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Agente</th>
+              <th>Negozio</th>
+              <th>Foto</th>
+              <th>ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" class="muted">Caricamento…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE FOTO -->
+  <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <header class="row" style="justify-content: space-between;">
+        <div>
+          <div id="modalTitle" style="font-weight:600;">Foto</div>
+          <div id="modalSubtitle" class="muted"></div>
+        </div>
+        <button class="btn" id="modalClose">Chiudi</button>
+      </header>
+      <main>
+        <div id="gallery" class="gallery"></div>
+        <div id="galleryEmpty" class="empty" style="display:none;">Nessuna foto per questa scheda.</div>
+      </main>
+      <footer class="row" style="justify-content:flex-end; gap:8px;">
+        <a id="sheetLink" class="btn" target="_blank" rel="noreferrer">Apri riga su Sheet</a>
+      </footer>
+    </div>
+  </div>
+
+<script>
+// URL della tua Web App
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbww6Tz3bUQIAud_o8kgf-RxkUkJXR5LSx0iUbBlrndW/exec";
+
+// Agenti e negozi (importati da Excel)
+const AGENTI = ["LUCA BERTOLOTTI","GIANLUCA GIORGETTI","FABIO MARCONI (FRASCA PARATI)","MAURO MILLUZZO"];
+const STORES_PER_AGENT = {
+  "LUCA BERTOLOTTI": ["Brico io Mondov\u00ec 2 - 1160","Brico io Camporosso - 1274","BricoIo Imperia - 1095","Brico io  Arenzano","Brico Io Alessandria 2","Brico Io Toirano","0031 Bricocenter Venaria - Mag.0031","0334 Bricocenter Castelletto Ticino - Mag.0334","0455 Bricocenter Cuneo- Mag.0455","0515 Bricocenter To Cigna -Mag.0515","0517 Bricocenter Rivoli Mag.0517","0518 Bricocenter Savona - Mag. 0518","0527 Bricocenter Asti - Mag.0527","0528 Bricocenter Borgo San Dalmazzo - Mag.0528","0537 Bricocenter Vercelli- Mag.0537","0539 Bricocenter Alba - Mag.0539","002 Bricoval Srl Rogno","002 Brico ok Galliate","001 Guercio - Caselle Torinese","001 Guercio S.p.A.","004 Guercio - Saluzzo","005 Guercio - Moncalieri","005 Leroy Merlin Torino 05","029 Leroy Merlin Torrazza Coste 29","031 Leroy Merlin Collegno  31","032 Leroy Merlin Genova 32","055 Leroy Merlin Giulio Cesare 55","001 Briko' Moncrivello","OBI 053 - Madonna Dell Olmo","OBI 061 Novara","OBI 070 - Romagnano Sesia","OBI 072 - Asti","OBI 084 - Ponderano","001 Panero Luca Antichit\u00e0"],
+  "GIANLUCA GIORGETTI": ["0201 Brico Io Sansepolcro","1162 Brico io  Aulla - 1162","1163 Brico Io Pistoia 2 - 1163","1166 Brico Io Montescudaio - 1166","1167 Bricoio Poggibonsi 2 - 1167","1173 Brico Io Follonica - 1173","1174 Brico Io Piombino - 1174","1175 Brico Io Empoli - 1175","1176 Brico Io Cerreto Guidi - 1176","1188 Bricoio Altopascio - 1188","1189 Bricoio Livorno - 1189","1190 Bricoio Ponsacco - 1190","1235 Brico Io Fornaci di Barga 2 - 1235","1275 Bricoio Lucca - 1275","Bricoio Pontedera - 1161","Brico Io Viareggio - 1165","Brico Io Sarzana - 1169","Brico Io Montecatini Terme","001 Brico io Massa","001 Bricoio Siena Srl","0134 Bricocenter Lucca - Mag. 0134","0329 Bricocenter La Spezia - Mag.329","0451 Bricocenter Firenze - Mag.0451","0529 Bricocenter Massa - Mag.0529","0533 Bricocenter Viareggio -0533","001 Bricocenter Siena - Mag. 0174","001 Bricolarge Aurelia Antica","003 Leroy Merlin Firenze 03","033 Leroy Merlin Livorno 33","OBI 041 - Navacchio Localita","OBI 045 - Arezzo","OBI 043 - Massa e Cozzile","OBI 044 - Sesto Fiorentino","OBI 067 - Empoli","OBI 088 - Montevarchi","OBI 090 - Prato","OBI 121 - Livorno","OBI 039- La Spezia"],
+  "FABIO MARCONI (FRASCA PARATI)": ["1203 Bricoio Spoleto - 1203","Brico Io Formia","Bricoio Marsciano - 1195","0408 Bricocenter Terni* Mag. 408","0495 Bricocenter Perugia  - Mag.0495","0519 Bricocenter Frosinone - Mag. 0519","536 Bricocenter Benevento - Mag.0536","001 Centro Edile Iosa Claudio Srl","008 Leroy Merlin Ciampino 08","011 Leroy Merlin Laurentina 11","012 Leroy Merlin Afragola 012","013 Leroy Merlin Porta di Roma 13","015 Leroy Merlin Giugliano 15","018 Leroy Merlin Fiumicino 18","023 Leroy Merlin Roma Polo 23","040 Leroy Merlin Romanina 40","047 Leroy Merlin Bastia Umbra 47","054 Leroy Merlin Torre Annunziata 54","057 Leroy Merlin Salaria 057","061 Leroy Merlin Salerno 061","OBI 025 - Viterbo","OBI 031 - Latina","OBI 078 - Guidonia Montecelio","OBI 080 - Corciano","OBI 098 - Roma","Bricocenter A. Casoria - 0814"],
+  "MAURO MILLUZZO": ["0155 Bricocenter A. Trapani - 155","0466 Bricocenter Catania Ognina - Mag.0466","0514 Bricocenter Milazzo Mag.0514","0516 Bricocenter Siracusa Mag.516","0530 Bricocenter Alcamo - Mag. 0530","0670 Bricocenter Palermo - Mag.0670","024 Leroy Merlin Catania 24","049 Leroy Merlin Palermo Mondello 49","050 Leroy Merlin Palermo Forum 50","059 Leroy Merlin Catania Fontanarossa 59","062 Leroy Merlin Catania Paesi Etnei 62","001 ONELEAF SRL Gela","001 Punto Brico Rosolini Siracusa","001 Raciti Nicol\u00f2 Srl Giarre","001 Pronto Hobby Brico Maida"]
+};
+
+let rowsCache = [];
+let currentModalItem = null;
+
+// Riferimenti DOM
+const agenteSelect = document.getElementById('agenteSelect');
+const negozioSelect = document.getElementById('negozioSelect');
+const dataInput = document.getElementById('dataInput');
+const fotoInput = document.getElementById('fotoInput');
+const fotoCount = document.getElementById('fotoCount');
+const form = document.getElementById('crmForm');
+const toast = document.getElementById('toast');
+const submitText = document.getElementById('submitText');
+const submitSpinner = document.getElementById('submitSpinner');
+
+const fAgente = document.getElementById('fAgente');
+const fDal = document.getElementById('fDal');
+const fAl = document.getElementById('fAl');
+const fSearch = document.getElementById('fSearch');
+const tableBody = document.querySelector('#registroTable tbody');
+const refreshBtn = document.getElementById('refreshBtn');
+
+const modalBackdrop = document.getElementById('modalBackdrop');
+const modalTitle = document.getElementById('modalTitle');
+const modalSubtitle = document.getElementById('modalSubtitle');
+const gallery = document.getElementById('gallery');
+const galleryEmpty = document.getElementById('galleryEmpty');
+const modalClose = document.getElementById('modalClose');
+const sheetLink = document.getElementById('sheetLink');
+
+(function init(){
+  // Agenti (form e filtro)
+  AGENTI.forEach(a => { const o=document.createElement('option'); o.value=a; o.textContent=a; agenteSelect.appendChild(o); });
+  const optAll = document.createElement('option'); optAll.value=''; optAll.textContent='Tutti'; fAgente.appendChild(optAll);
+  AGENTI.forEach(a => { const o=document.createElement('option'); o.value=a; o.textContent=a; fAgente.appendChild(o); });
+
+  updateStoresForAgent('');
+  agenteSelect.addEventListener('change', ()=> updateStoresForAgent(agenteSelect.value));
+  fotoInput.addEventListener('change', ()=>{ const n=fotoInput.files?fotoInput.files.length:0; fotoCount.textContent = n?`Selezionate ${n} foto`:''; });
+  form.addEventListener('submit', onSubmit);
+  ;[fAgente,fDal,fAl,fSearch].forEach(el=> el.addEventListener('input', renderTable));
+  refreshBtn.addEventListener('click', loadRegistry);
+  modalClose.addEventListener('click', ()=> modalBackdrop.style.display='none');
+  modalBackdrop.addEventListener('click', (e)=>{ if(e.target===modalBackdrop) modalBackdrop.style.display='none'; });
+  loadRegistry();
+})();
+
+function updateStoresForAgent(agent){
+  negozioSelect.innerHTML = '';
+  if(!agent){ const o=document.createElement('option'); o.value=''; o.textContent='Seleziona un Agente prima'; negozioSelect.appendChild(o); negozioSelect.disabled=true; return; }
+  (STORES_PER_AGENT[agent]||[]).forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; negozioSelect.appendChild(o); });
+  negozioSelect.disabled=false;
+}
+
+function setToast(msg, ok=true){
+  toast.textContent = msg; toast.style.display='block';
+  toast.style.background = ok?'#ecfdf5':'#fef2f2';
+  toast.style.color = ok?'#065f46':'#991b1b';
+  toast.style.borderColor = ok?'#a7f3d0':'#fecaca';
+  setTimeout(()=> toast.style.display='none', 2800);
+}
+
+async function loadRegistry(){
+  tableBody.innerHTML = '<tr><td colspan="5" class="muted">Caricamento…</td></tr>';
+  try{
+    const res = await fetch(`${SCRIPT_URL}?action=list`, { method:'GET' });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const payload = await res.json();
+    rowsCache = payload.rows || [];
+    renderTable();
+  } catch(err){
+    console.error(err); setToast('Errore nel caricamento del registro', false);
+    tableBody.innerHTML = '<tr><td colspan="5" class="muted">Impossibile caricare</td></tr>';
+  }
+}
+
+function renderTable(){
+  const qA=fAgente.value||''; const qDal=fDal.value||''; const qAl=fAl.value||''; const qSearch=(fSearch.value||'').toLowerCase();
+  const rows = rowsCache.filter(r=>{
+    if(qA && r.agente!==qA) return false;
+    if(qDal && r.data < qDal) return false;
+    if(qAl && r.data > qAl) return false;
+    if(qSearch){ const hay = `${r.id} ${r.agente} ${r.negozio} ${r.data}`.toLowerCase(); if(!hay.includes(qSearch)) return false; }
+    return true;
+  }).sort((a,b)=> new Date(b.createdAtIso) - new Date(a.createdAtIso));
+
+  tableBody.innerHTML='';
+  if(rows.length===0){ const tr=document.createElement('tr'); const td=document.createElement('td'); td.colSpan=5; td.className='muted'; td.textContent='Nessun risultato'; tr.appendChild(td); tableBody.appendChild(tr); return; }
+
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const photosBadge = (r.photoUrls && r.photoUrls.length) ? `<a href="#" data-action="open" data-id="${r.id}" class="pill">${r.photoUrls.length} foto</a>` : '<span class="muted">—</span>';
+    tr.innerHTML = `
+      <td>${r.data}</td>
+      <td>${r.agente}</td>
+      <td>${r.negozio}</td>
+      <td>${photosBadge}</td>
+      <td><code style="font-size:.8rem;">${r.id}</code></td>`;
+    tr.addEventListener('click',(e)=>{ const a=e.target.closest('a[data-action="open"]'); if(!a) return; e.preventDefault(); openModal(r); });
+    tableBody.appendChild(tr);
+  });
+}
+
+async function onSubmit(e){
+  e.preventDefault();
+  const agente = agenteSelect.value; const negozio = negozioSelect.value; const data = dataInput.value; const files = Array.from(fotoInput.files||[]);
+  if(!agente) return setToast('Seleziona un Agente.', false);
+  if(!negozio) return setToast('Seleziona un Negozio.', false);
+  if(!data) return setToast('Seleziona la Data di passaggio.', false);
+
+  try{
+    submitSpinner.style.display='inline-block'; submitText.textContent='Invio…';
+    const fd = new FormData();
+    fd.append('action','add');
+    fd.append('agente', agente);
+    fd.append('negozio', negozio);
+    fd.append('data', data);
+    files.forEach((f,i)=> fd.append('foto'+i, f, f.name));
+    const res = await fetch(SCRIPT_URL, { method:'POST', body: fd });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    await res.json();
+    setToast('Scheda inviata e registrata ✔︎');
+    agenteSelect.value=''; updateStoresForAgent(''); dataInput.value=''; fotoInput.value=''; fotoCount.textContent='';
+    await loadRegistry();
+  } catch(err){ console.error(err); setToast('Errore durante il salvataggio', false); }
+  finally { submitSpinner.style.display='none'; submitText.textContent='Invia'; }
+}
+
+function openModal(item){
+  modalTitle.textContent = `Foto – ${item.agente} / ${item.negozio}`;
+  modalSubtitle.textContent = `Passaggio del ${item.data}`;
+  sheetLink.href = item.sheetRowUrl || '#';
+  gallery.innerHTML='';
+  const urls = item.photoUrls||[];
+  if(urls.length){ urls.forEach(u=>{ const a=document.createElement('a'); a.href=u; a.target='_blank'; a.rel='noreferrer'; const img=document.createElement('img'); img.src=u; a.appendChild(img); gallery.appendChild(a); }); gallery.style.display=''; galleryEmpty.style.display='none'; }
+  else { gallery.style.display='none'; galleryEmpty.style.display='block'; }
+  modalBackdrop.style.display='flex';
+}
+</script>
+</body>
+</html>
