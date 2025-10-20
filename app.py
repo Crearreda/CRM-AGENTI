@@ -1,4 +1,3 @@
-
 import os
 import json
 from datetime import datetime
@@ -50,6 +49,7 @@ def _cloudinary_setup():
             secure=True,
         )
     else:
+        # Se non configuri Cloudinary, al limite non carichiamo foto
         raise RuntimeError("Missing Cloudinary credentials")
 
 @app.get("/health")
@@ -87,20 +87,33 @@ def list_rows():
     if not values or len(values) < 2:
         return jsonify({"rows": []})
     header = [h.strip().lower() for h in values[0]]
+    idx = {h: i for i, h in enumerate(header)}
+
     rows = []
     for r_i, row in enumerate(values[1:], start=2):
         try:
-            idx = {h:i for i,h in enumerate(header)}
-            rid = row[idx.get("id", -1)] if idx.get("id", -1) >= 0 else ""
+            rid = row[idx.get("id", -1)] if idx.get("id", -1) is not None and idx.get("id", -1) >= 0 else ""
             if not rid:
                 continue
+            # leggere campi con fallback
+            def col(name, default=""):
+                j = idx.get(name, -1)
+                return row[j] if j >= 0 and j < len(row) else default
+
+            photo_json_raw = col("photourls (json)", "") or col("photourls", "")
+            try:
+                photo_urls = json.loads(photo_json_raw or "[]")
+            except Exception:
+                photo_urls = []
+
             item = {
                 "id": rid,
-                "agente": row[idx.get("agente", -1)] if idx.get("agente", -1) >= 0 else "",
-                "negozio": row[idx.get("negozio", -1)] if idx.get("negozio", -1) >= 0 else "",
-                "data": row[idx.get("data", -1)] if idx.get("data", -1) >= 0 else "",
-                "createdAtIso": row[idx.get("createdatiso", -1)] if idx.get("createdatiso", -1) >= 0 else "",
-                "photoUrls": json.loads(row[idx.get("photourls (json)", -1)] or "[]") if idx.get("photourls (json)", -1) >= 0 else [],
+                "agente": col("agente"),
+                "negozio": col("negozio"),
+                "data": col("data"),
+                "createdAtIso": col("createdatiso"),
+                "photoUrls": photo_urls,
+                "osservazioni": col("osservazioni"),  # <-- nuovo campo in output
                 "sheetRowUrl": f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#range=A{r_i}",
             }
             rows.append(item)
@@ -116,8 +129,10 @@ def add_row():
     agente = request.form.get("agente", "").strip()
     negozio = request.form.get("negozio", "").strip()
     data_pass = request.form.get("data", "").strip()
+    osservazioni = request.form.get("osservazioni", "").strip()  # <-- nuovo campo in input
     created = datetime.utcnow().isoformat()
 
+    # Upload foto su Cloudinary (se configurato)
     _cloudinary_setup()
     photo_urls = []
     for key in request.files:
@@ -127,12 +142,28 @@ def add_row():
         up = cloudinary.uploader.upload(file, folder="crm-agenti", resource_type="image")
         photo_urls.append(up.get("secure_url"))
 
+    # Scrittura su Google Sheets
     gc = _load_gs_client()
     sh = gc.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
     rid = f"R-{datetime.utcnow().strftime('%y%m%d%H%M%S')}"
-    sh.append_row([rid, agente, negozio, data_pass, created, json.dumps(photo_urls), ""], value_input_option="USER_ENTERED")
+    # Intestazioni attese: id | agente | negozio | data | createdAtIso | photoUrls (json) | osservazioni
+    sh.append_row(
+        [rid, agente, negozio, data_pass, created, json.dumps(photo_urls), osservazioni],
+        value_input_option="USER_ENTERED"
+    )
 
-    return jsonify({"ok": True, "item": {"id": rid, "agente": agente, "negozio": negozio, "data": data_pass, "createdAtIso": created, "photoUrls": photo_urls}})
+    return jsonify({
+        "ok": True,
+        "item": {
+            "id": rid,
+            "agente": agente,
+            "negozio": negozio,
+            "data": data_pass,
+            "createdAtIso": created,
+            "photoUrls": photo_urls,
+            "osservazioni": osservazioni,
+        }
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
